@@ -1,20 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Deno Chat</title>
+  <title>Deno 聊天室</title>
   <style>
-    #chat { width: 600px; margin: 20px auto; }
-    #messages { height: 400px; border: 1px solid #ccc; overflow-y: auto; }
-    input { width: 80%; padding: 10px; }
-    button { width: 18%; padding: 10px; }
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    #messages { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; }
+    #input { width: 70%; padding: 10px; }
+    button { width: 25%; padding: 10px; background: #007bff; color: white; border: none; }
+    .message { margin: 5px 0; padding: 5px; border-bottom: 1px solid #eee; }
+    .user { font-weight: bold; color: #333; }
+    .time { color: #666; font-size: 0.8em; }
   </style>
 </head>
 <body>
-  <div id="chat">
-    <div id="messages"></div>
-    <input id="input" placeholder="输入消息..." />
-    <button onclick="sendMessage()">发送</button>
-  </div>
+  <div id="messages"></div>
+  <input id="input" placeholder="输入消息..." />
+  <button onclick="sendMessage()">发送</button>
   <script src="chat.js"></script>
 </body>
 </html>
