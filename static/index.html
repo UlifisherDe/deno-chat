@@ -1,21 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Deno 聊天室</title>
+  <title>安全聊天室</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-    #messages { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; }
-    #input { width: 70%; padding: 10px; }
-    button { width: 25%; padding: 10px; background: #007bff; color: white; border: none; }
-    .message { margin: 5px 0; padding: 5px; border-bottom: 1px solid #eee; }
-    .user { font-weight: bold; color: #333; }
-    .time { color: #666; font-size: 0.8em; }
+    /* 样式包含登录表单和聊天界面切换 */
+    #auth { margin: 20px auto; width: 300px; }
+    #chat { display: none; }
+    .auth-form { margin-bottom: 10px; }
+    input, button { width: 100%; padding: 8px; margin: 5px 0; }
   </style>
 </head>
 <body>
-  <div id="messages"></div>
-  <input id="input" placeholder="输入消息..." />
-  <button onclick="sendMessage()">发送</button>
+  <div id="auth">
+    <div class="auth-form">
+      <h3>注册</h3>
+      <input id="regUsername" placeholder="用户名">
+      <input id="regPassword" type="password" placeholder="密码">
+      <button onclick="register()">注册</button>
+    </div>
+    <div class="auth-form">
+      <h3>登录</h3>
+      <input id="loginUsername" placeholder="用户名">
+      <input id="loginPassword" type="password" placeholder="密码">
+      <button onclick="login()">登录</button>
+    </div>
+  </div>
+
+  <div id="chat">
+    <div id="messages"></div>
+    <input id="input" placeholder="输入消息...">
+    <button onclick="sendMessage()">发送</button>
+    <button onclick="loadHistory(2)">加载更多</button>
+  </div>
   <script src="chat.js"></script>
 </body>
 </html>
