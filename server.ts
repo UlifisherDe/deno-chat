@@ -1,6 +1,6 @@
 import { Application, Router } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 
-// 定义消息类型（直接内联，无需外部文件）
+// 定义消息类型
 interface Message {
   text: string;
   timestamp: string;
@@ -14,7 +14,7 @@ const kv = await Deno.openKv();
 const app = new Application();
 const router = new Router();
 
-// 存储消息到 Deno KV
+// 保存消息到数据库
 async function saveMessage(message: Message) {
   await kv.set(["messages", Date.now()], message);
 }
@@ -26,14 +26,14 @@ async function getHistory(): Promise<Message[]> {
   for await (const entry of entries) {
     messages.push(entry.value);
   }
-  return messages.reverse();
+  return messages.reverse(); // 最新消息在前
 }
 
-// WebSocket 处理
+// WebSocket 实时通信
 router.get("/ws", async (ctx) => {
   const socket = await ctx.upgrade();
 
-  // 发送历史消息
+  // 发送历史消息给新用户
   const history = await getHistory();
   socket.send(JSON.stringify({ type: "history", data: history }));
 
@@ -45,21 +45,23 @@ router.get("/ws", async (ctx) => {
       user: "Anonymous",
     };
     await saveMessage(message);
-    // 广播给所有客户端
+
+    // 广播给所有客户端（包括自己）
     for (const client of ctx.app.wsServer.clients) {
-      if (client !== socket && client.readyState === WebSocket.OPEN) {
+      if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify({ type: "message", data: message }));
       }
     }
   };
 });
 
-// 静态文件托管
+// 静态文件托管（修正路径）
 app.use(router.routes());
 app.use(router.allowedMethods());
 app.use(async (ctx) => {
+  const __dirname = new URL(".", import.meta.url).pathname;
   await ctx.send({
-    root: `${Deno.cwd()}/static`,
+    root: `${__dirname}/static`,
     index: "index.html",
   });
 });
