@@ -1,151 +1,87 @@
-class ChatApp {
+class AuthService {
   constructor() {
-    this.socket = null;
-    this.currentUser = null;
-    this.initEventListeners();
-    this.checkAuthStatus();
+    this.initForms();
+    this.checkToken();
   }
 
-  initEventListeners() {
-    document.getElementById('reg-form').addEventListener('submit', (e) => {
+  initForms() {
+    // 注册表单
+    document.getElementById('reg-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      this.handleRegister();
+      const formData = new FormData(e.target);
+      await this.register(
+        formData.get('username').trim(),
+        formData.get('password').trim()
+      );
     });
 
-    document.getElementById('login-form').addEventListener('submit', (e) => {
+    // 登录表单
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      this.handleLogin();
-    });
-
-    document.getElementById('message-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.sendMessage();
+      const formData = new FormData(e.target);
+      await this.login(
+        formData.get('username').trim(),
+        formData.get('password').trim()
+      );
     });
   }
 
-  async checkAuthStatus() {
-    const token = localStorage.getItem('chat-token');
-    if (token) await this.initializeChat(token);
-  }
-
-  async handleRegister() {
-    const username = document.getElementById('reg-username').value.trim();
-    const password = document.getElementById('reg-password').value.trim();
-
-    if (!username || !password) {
-      this.showAlert('用户名和密码不能为空', 'error');
-      return;
-    }
-
+  async register(username, password) {
     try {
-      const response = await fetch('/register', {
+      const res = await fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw data;
+      
+      this.showMessage('注册成功，请登录', 'success');
+      document.getElementById('reg-form').reset();
+
+    } catch (error) {
+      this.showMessage(error.error || '注册失败', 'error');
+    }
+  }
+
+  async login(username, password) {
+    try {
+      const res = await fetch('/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
 
-      const data = await response.json();
-      if (!response.ok) throw data;
+      if (!res.ok) {
+        const error = await res.json();
+        throw error;
+      }
 
-      this.showAlert('注册成功，请登录', 'success');
-      document.getElementById('reg-username').value = '';
-      document.getElementById('reg-password').value = '';
+      const { token } = await res.json();
+      localStorage.setItem('authToken', token);
+      
+      this.showMessage('登录成功，正在跳转...', 'success');
+      setTimeout(() => window.location.href = '/chat', 1500);
 
     } catch (error) {
-      this.showAlert(error.error || '注册失败', 'error');
+      this.showMessage(error.error || '登录失败', 'error');
+      console.error('登录错误:', error);
     }
   }
 
-  async handleLogin() {
-    const username = document.getElementById('login-username').value.trim();
-    const password = document.getElementById('login-password').value.trim();
-
-    try {
-      const response = await fetch('/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-
-      const { token } = await response.json();
-      localStorage.setItem('chat-token', token);
-      await this.initializeChat(token);
-
-    } catch (error) {
-      this.showAlert('登录失败，请检查凭证', 'error');
-    }
+  checkToken() {
+    const token = localStorage.getItem('authToken');
+    if (token) window.location.href = '/chat';
   }
 
-  async initializeChat(token) {
-    document.getElementById('auth-section').classList.add('hidden');
-    document.getElementById('chat-section').classList.remove('hidden');
-    this.connectWebSocket(token);
-    this.loadMessageHistory();
-  }
-
-  connectWebSocket(token) {
-    this.socket = new WebSocket(`wss://${window.location.host}/ws?token=${token}`);
-
-    this.socket.onmessage = (event) => {
-      const { type, data } = JSON.parse(event.data);
-      if (type === 'history') this.renderMessages(data);
-      if (type === 'message') this.renderMessage(data);
-    };
-
-    this.socket.onclose = () => {
-      setTimeout(() => this.connectWebSocket(token), 5000);
-    };
-  }
-
-  renderMessages(messages) {
-    const container = document.getElementById('messages-container');
-    container.innerHTML = messages.map(msg => `
-      <div class="message">
-        <div class="meta">
-          <span class="user">${msg.user}</span>
-          <span class="time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
-        </div>
-        <div class="content">${msg.encryptedText}</div>
-      </div>
-    `).join('');
-  }
-
-  renderMessage(message) {
-    const container = document.getElementById('messages-container');
+  showMessage(text, type) {
     const div = document.createElement('div');
-    div.className = 'message';
-    div.innerHTML = `
-      <div class="meta">
-        <span class="user">${message.user}</span>
-        <span class="time">${new Date(message.timestamp).toLocaleTimeString()}</span>
-      </div>
-      <div class="content">${message.encryptedText}</div>
-    `;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-  }
-
-  async sendMessage() {
-    const input = document.getElementById('message-input');
-    const content = input.value.trim();
-    if (!content) return;
-
-    try {
-      this.socket.send(content);
-      input.value = '';
-    } catch (error) {
-      this.showAlert('消息发送失败', 'error');
-    }
-  }
-
-  showAlert(message, type = 'info') {
-    const alert = document.createElement('div');
-    alert.className = `alert alert-${type}`;
-    alert.textContent = message;
-    document.body.prepend(alert);
-    setTimeout(() => alert.remove(), 3000);
+    div.className = `alert ${type}`;
+    div.textContent = text;
+    document.body.prepend(div);
+    setTimeout(() => div.remove(), 3000);
   }
 }
 
-// 启动应用
-new ChatApp();
+new AuthService();
