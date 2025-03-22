@@ -2,19 +2,40 @@ class ChatApp {
   constructor() {
     this.socket = null;
     this.currentUser = null;
-    this.page = 1;
     this.initEventListeners();
+    this.checkAuthStatus();
   }
 
   initEventListeners() {
-    document.getElementById('reg-btn').addEventListener('click', () => this.register());
-    document.getElementById('login-btn').addEventListener('click', () => this.login());
-    document.getElementById('send-btn').addEventListener('click', () => this.sendMessage());
+    document.getElementById('reg-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleRegister();
+    });
+
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleLogin();
+    });
+
+    document.getElementById('message-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.sendMessage();
+    });
   }
 
-  async register() {
-    const username = document.getElementById('reg-username').value;
-    const password = document.getElementById('reg-password').value;
+  async checkAuthStatus() {
+    const token = localStorage.getItem('chat-token');
+    if (token) await this.initializeChat(token);
+  }
+
+  async handleRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value.trim();
+
+    if (!username || !password) {
+      this.showAlert('用户名和密码不能为空', 'error');
+      return;
+    }
 
     try {
       const response = await fetch('/register', {
@@ -23,16 +44,21 @@ class ChatApp {
         body: JSON.stringify({ username, password })
       });
 
-      if (!response.ok) throw await response.json();
-      alert('注册成功，请登录');
+      const data = await response.json();
+      if (!response.ok) throw data;
+
+      this.showAlert('注册成功，请登录', 'success');
+      document.getElementById('reg-username').value = '';
+      document.getElementById('reg-password').value = '';
+
     } catch (error) {
-      alert(error.error || '注册失败');
+      this.showAlert(error.error || '注册失败', 'error');
     }
   }
 
-  async login() {
-    const username = document.getElementById('login-username').value;
-    const password = document.getElementById('login-password').value;
+  async handleLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value.trim();
 
     try {
       const response = await fetch('/login', {
@@ -43,17 +69,18 @@ class ChatApp {
 
       const { token } = await response.json();
       localStorage.setItem('chat-token', token);
-      this.initChat(token);
-    } catch {
-      alert('登录失败');
+      await this.initializeChat(token);
+
+    } catch (error) {
+      this.showAlert('登录失败，请检查凭证', 'error');
     }
   }
 
-  initChat(token) {
-    document.getElementById('auth').style.display = 'none';
-    document.getElementById('chat').style.display = 'block';
+  async initializeChat(token) {
+    document.getElementById('auth-section').classList.add('hidden');
+    document.getElementById('chat-section').classList.remove('hidden');
     this.connectWebSocket(token);
-    this.loadHistory();
+    this.loadMessageHistory();
   }
 
   connectWebSocket(token) {
@@ -61,11 +88,8 @@ class ChatApp {
 
     this.socket.onmessage = (event) => {
       const { type, data } = JSON.parse(event.data);
-      if (type === 'history') {
-        data.forEach(msg => this.displayMessage(msg));
-      } else if (type === 'message') {
-        this.displayMessage(data);
-      }
+      if (type === 'history') this.renderMessages(data);
+      if (type === 'message') this.renderMessage(data);
     };
 
     this.socket.onclose = () => {
@@ -73,44 +97,53 @@ class ChatApp {
     };
   }
 
-  displayMessage(msg) {
-    const messagesDiv = document.getElementById('messages');
-    const messageEl = document.createElement('div');
-    messageEl.className = 'message';
-    messageEl.innerHTML = `
-      <div class="message-header">
-        <span class="user">${msg.user}</span>
-        <span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>
+  renderMessages(messages) {
+    const container = document.getElementById('messages-container');
+    container.innerHTML = messages.map(msg => `
+      <div class="message">
+        <div class="meta">
+          <span class="user">${msg.user}</span>
+          <span class="time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+        </div>
+        <div class="content">${msg.encryptedText}</div>
       </div>
-      <div class="content">${msg.encryptedText}</div>
+    `).join('');
+  }
+
+  renderMessage(message) {
+    const container = document.getElementById('messages-container');
+    const div = document.createElement('div');
+    div.className = 'message';
+    div.innerHTML = `
+      <div class="meta">
+        <span class="user">${message.user}</span>
+        <span class="time">${new Date(message.timestamp).toLocaleTimeString()}</span>
+      </div>
+      <div class="content">${message.encryptedText}</div>
     `;
-    messagesDiv.appendChild(messageEl);
-    this.autoScroll();
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
   }
 
   async sendMessage() {
     const input = document.getElementById('message-input');
-    if (!input.value.trim()) return;
+    const content = input.value.trim();
+    if (!content) return;
 
     try {
-      this.socket.send(input.value);
+      this.socket.send(content);
       input.value = '';
     } catch (error) {
-      alert('消息发送失败');
+      this.showAlert('消息发送失败', 'error');
     }
   }
 
-  async loadHistory() {
-    const response = await fetch(`/messages?page=${this.page}`);
-    const messages = await response.json();
-    messages.forEach(msg => this.displayMessage(msg));
-  }
-
-  autoScroll() {
-    const messagesDiv = document.getElementById('messages');
-    if (messagesDiv.scrollHeight - messagesDiv.scrollTop < 800) {
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
+  showAlert(message, type = 'info') {
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type}`;
+    alert.textContent = message;
+    document.body.prepend(alert);
+    setTimeout(() => alert.remove(), 3000);
   }
 }
 
