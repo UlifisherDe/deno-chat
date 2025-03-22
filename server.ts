@@ -36,18 +36,15 @@ app.use(async (ctx, next) => {
 router.post("/register", async (ctx) => {
   const { username, password } = await ctx.request.body().value;
   
-  // 验证用户名是否已存在
   if (await kv.get(["users", username])) {
     ctx.response.status = 400;
     ctx.response.body = { error: "用户名已存在" };
     return;
   }
 
-  // 生成盐值和密码哈希
   const saltArr = crypto.getRandomValues(new Uint8Array(16));
   const passwordHash = await deriveHash(password, saltArr);
   
-  // 存储用户信息
   await kv.set(["users", username], {
     username,
     passwordHash: toHashString(passwordHash),
@@ -62,14 +59,12 @@ router.post("/login", async (ctx) => {
   const { username, password } = await ctx.request.body().value;
   const userEntry = await kv.get<User>(["users", username]);
 
-  // 验证用户是否存在
   if (!userEntry.value) {
     ctx.response.status = 401;
     ctx.response.body = { error: "用户不存在" };
     return;
   }
 
-  // 验证密码
   const isValid = await verifyPassword(password, userEntry.value);
   if (!isValid) {
     ctx.response.status = 401;
@@ -77,16 +72,15 @@ router.post("/login", async (ctx) => {
     return;
   }
 
-  // 生成 Token
   const token = btoa(JSON.stringify({ 
     username,
-    exp: Date.now() + 86400_000 // 24小时有效期
+    exp: Date.now() + 86400_000
   }));
 
   ctx.response.body = { token };
 });
 
-// 获取历史消息（分页）
+// 获取历史消息
 router.get("/messages", async (ctx) => {
   const page = parseInt(ctx.request.url.searchParams.get("page") || "1");
   const limit = 20;
@@ -110,18 +104,14 @@ router.get("/ws", async (ctx) => {
   const token = ctx.request.url.searchParams.get("token");
 
   try {
-    // 解析 Token
     const { username } = JSON.parse(atob(token || ""));
     const user = await kv.get(["users", username]);
     
-    // 验证用户有效性
-    if (!user.value) throw new Error("无效用户");
+    if (!user.value) throw new Error();
 
-    // 发送最近消息
     const history = await getRecentMessages();
     socket.send(JSON.stringify({ type: "history", data: history }));
 
-    // 处理新消息
     socket.onmessage = async (event) => {
       const message: Message = {
         encryptedText: event.data,
@@ -130,7 +120,6 @@ router.get("/ws", async (ctx) => {
         user: username
       };
       
-      // 存储并广播消息
       await kv.set(["messages", Date.now()], message);
       broadcastMessage(message);
     };
@@ -169,10 +158,14 @@ async function deriveHash(password: string, salt: Uint8Array) {
   );
 }
 
-// 密码验证
+// 密码验证（关键修复）
 async function verifyPassword(password: string, user: User) {
-  const salt = Uint8Array.from(atob(user.salt), c => c.charCodeAt(0)));
-  const storedHash = Uint8Array.from(atob(user.passwordHash), c => c.charCodeAt(0)));
+  const salt = new Uint8Array(
+    atob(user.salt).split("").map(c => c.charCodeAt(0))
+  );
+  const storedHash = new Uint8Array(
+    atob(user.passwordHash).split("").map(c => c.charCodeAt(0))
+  );
   const newHash = await deriveHash(password, salt);
   return arraysEqual(new Uint8Array(newHash), storedHash);
 }
