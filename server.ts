@@ -2,70 +2,60 @@ import { Application, Router } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { crypto, toHashString } from "https://deno.land/std@0.207.0/crypto/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 
-// 类型定义
+// 调试模式开关
+const DEBUG = true;
+
 interface User {
   username: string;
   passwordHash: string;
   salt: string;
 }
 
-interface Message {
-  encryptedText: string;
-  iv: string;
-  timestamp: string;
-  user: string;
-}
-
-// 初始化
 const kv = await Deno.openKv();
 const app = new Application();
 const router = new Router();
 
-// 中间件配置
-app.use(oakCors({
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-}));
-
+// ========== [1] 中间件配置 ==========
+app.use(oakCors({ origin: "*" }));
 app.use(async (ctx, next) => {
-  console.log(`[${new Date().toISOString()}] ${ctx.request.method} ${ctx.request.url.pathname}`);
-  try {
-    await next();
-  } catch (err) {
-    ctx.response.status = 500;
-    ctx.response.body = { error: "SERVER_ERROR" };
-    console.error("Error:", err);
+  if (ctx.request.hasBody) {
+    try {
+      ctx.state.body = await ctx.request.body().value;
+      DEBUG && console.log("请求体:", ctx.state.body);
+    } catch (error) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "无效的JSON格式" };
+      return;
+    }
   }
+  await next();
 });
 
-// 用户注册
+// ========== [2] 用户注册 ==========
 router.post("/register", async (ctx) => {
+  const { username, password } = ctx.state.body || {};
+  
+  // 输入验证
+  if (!username?.trim() || !password?.trim()) {
+    ctx.response.status = 400;
+    ctx.response.body = { error: "用户名和密码不能为空" };
+    return;
+  }
+
   try {
-    const body = await ctx.request.body().value;
-    const { username, password } = body;
-
-    // 输入验证
-    if (!username?.trim() || !password?.trim()) {
-      ctx.response.status = 400;
-      ctx.response.body = { error: "INVALID_INPUT" };
-      return;
-    }
-
     // 检查用户是否存在
-    const existingUser = await kv.get(["users", username]);
+    const existingUser = await kv.get<User>(["users", username]);
     if (existingUser.value) {
       ctx.response.status = 409;
-      ctx.response.body = { error: "USER_EXISTS" };
+      ctx.response.body = { error: "用户名已被注册" };
       return;
     }
 
-    // 生成安全凭证
+    // 生成密码哈希
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const encoder = new TextEncoder();
     const hashBuffer = await crypto.subtle.digest(
       "SHA-256",
-      encoder.encode(password + toHashString(salt))
+      new TextEncoder().encode(password + toHashString(salt))
     );
 
     // 存储用户数据
@@ -76,126 +66,77 @@ router.post("/register", async (ctx) => {
     });
 
     ctx.response.body = { success: true };
-    console.log(`[注册成功] 用户名: ${username}`);
+    DEBUG && console.log(`[注册成功] 用户: ${username}`);
 
   } catch (error) {
-    console.error("[注册失败]", error);
+    console.error("注册错误:", error);
     ctx.response.status = 500;
-    ctx.response.body = { error: "REGISTRATION_FAILED" };
+    ctx.response.body = { error: "注册失败" };
   }
 });
 
-// 用户登录
+// ========== [3] 用户登录 ==========
 router.post("/login", async (ctx) => {
-  try {
-    const body = await ctx.request.body().value;
-    const { username, password } = body;
+  const { username, password } = ctx.state.body || {};
 
+  try {
     // 获取用户数据
-    const userEntry = await kv.get<User>(["users", username]);
-    if (!userEntry.value) {
+    const user = await kv.get<User>(["users", username]);
+    DEBUG && console.log("数据库查询结果:", user);
+
+    if (!user.value) {
       ctx.response.status = 404;
-      ctx.response.body = { error: "USER_NOT_FOUND" };
+      ctx.response.body = { error: "用户不存在" };
       return;
     }
 
-    // 验证密码
-    const salt = Uint8Array.from(atob(userEntry.value.salt), c => c.charCodeAt(0));
-    const storedHash = Uint8Array.from(atob(userEntry.value.passwordHash), c => c.charCodeAt(0));
-    const hashBuffer = await crypto.subtle.digest(
+    // 转换存储的盐值
+    const salt = Uint8Array.from(atob(user.value.salt), c => c.charCodeAt(0)));
+    DEBUG && console.log("盐值对比:", {
+      stored: user.value.salt,
+      converted: toHashString(salt)
+    });
+
+    // 生成新哈希
+    const newHash = await crypto.subtle.digest(
       "SHA-256",
       new TextEncoder().encode(password + toHashString(salt))
     );
+    const newHashStr = toHashString(new Uint8Array(newHash));
+    
+    DEBUG && console.log("哈希对比:", {
+      stored: user.value.passwordHash,
+      generated: newHashStr
+    });
 
-    if (!arraysEqual(new Uint8Array(hashBuffer), storedHash)) {
+    // 验证密码
+    if (user.value.passwordHash !== newHashStr) {
       ctx.response.status = 401;
-      ctx.response.body = { error: "INVALID_CREDENTIALS" };
+      ctx.response.body = { error: "密码错误" };
       return;
     }
 
-    // 生成访问令牌
+    // 生成Token
     const token = btoa(JSON.stringify({
       username,
-      exp: Date.now() + 86400_000 // 24小时有效期
+      exp: Date.now() + 86400_000
     }));
-
-    ctx.response.body = { token };
-    console.log(`[登录成功] 用户名: ${username}`);
-
-  } catch (error) {
-    console.error("[登录失败]", error);
-    ctx.response.status = 500;
-    ctx.response.body = { error: "LOGIN_FAILED" };
-  }
-});
-
-// 消息存储与实时通信
-router.get("/ws", async (ctx) => {
-  const socket = await ctx.upgrade();
-  const token = ctx.request.url.searchParams.get("token");
-
-  try {
-    // 验证令牌
-    const { username, exp } = JSON.parse(atob(token || ""));
-    if (Date.now() > exp) throw new Error("TOKEN_EXPIRED");
     
-    const user = await kv.get(["users", username]);
-    if (!user.value) throw new Error("INVALID_USER");
-
-    // 发送历史消息
-    const messages = await getMessages(20);
-    socket.send(JSON.stringify({ type: "history", data: messages }));
-
-    // 实时消息处理
-    socket.onmessage = async (event) => {
-      try {
-        const message: Message = {
-          encryptedText: event.data,
-          iv: toHashString(crypto.getRandomValues(new Uint8Array(12))),
-          timestamp: new Date().toISOString(),
-          user: username
-        };
-
-        await kv.set(["messages", Date.now()], message);
-        broadcastMessage(message);
-      } catch (error) {
-        console.error("[消息处理失败]", error);
-      }
-    };
+    ctx.response.body = { token };
+    DEBUG && console.log(`[登录成功] 用户: ${username}`);
 
   } catch (error) {
-    console.error("[WS认证失败]", error);
-    socket.close(1008, "AUTH_FAILED");
+    console.error("登录错误:", error);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "登录失败" };
   }
 });
 
-// 辅助函数
-async function getMessages(limit: number): Promise<Message[]> {
-  const entries = kv.list<Message>({ prefix: ["messages"] }, { 
-    reverse: true,
-    limit 
-  });
-
-  const messages: Message[] = [];
-  for await (const entry of entries) messages.push(entry.value);
-  return messages;
-}
-
-function broadcastMessage(message: Message) {
-  app.context.wsServer.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ type: "message", data: message }));
-    }
-  });
-}
-
-function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-  return a.length === b.length && a.every((val, idx) => val === b[idx]);
-}
-
-// 静态文件服务
+// ========== [4] 其他配置 ==========
 app.use(router.routes());
 app.use(router.allowedMethods());
+
+// 静态文件服务
 app.use(async (ctx) => {
   await ctx.send({
     root: `${Deno.cwd()}/static`,
@@ -203,6 +144,5 @@ app.use(async (ctx) => {
   });
 });
 
-// 启动服务器
-console.log("🚀 Server running on http://localhost:8000");
+console.log("🚀 服务已启动: http://localhost:8000");
 await app.listen({ port: 8000 });
