@@ -28,7 +28,7 @@ app.use(async (ctx, next) => {
     await next();
   } catch (err) {
     ctx.response.status = 500;
-    ctx.response.body = { error: "Internal Server Error" };
+    ctx.response.body = { error: "服务器内部错误" };
   }
 });
 
@@ -36,19 +36,22 @@ app.use(async (ctx, next) => {
 router.post("/register", async (ctx) => {
   const { username, password } = await ctx.request.body().value;
   
+  // 验证用户名是否已存在
   if (await kv.get(["users", username])) {
     ctx.response.status = 400;
     ctx.response.body = { error: "用户名已存在" };
     return;
   }
 
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const passwordHash = await deriveHash(password, salt);
+  // 生成盐值和密码哈希
+  const saltArr = crypto.getRandomValues(new Uint8Array(16));
+  const passwordHash = await deriveHash(password, saltArr);
   
+  // 存储用户信息
   await kv.set(["users", username], {
     username,
     passwordHash: toHashString(passwordHash),
-    salt: toHashString(salt)
+    salt: toHashString(saltArr)
   });
 
   ctx.response.body = { success: true };
@@ -57,23 +60,33 @@ router.post("/register", async (ctx) => {
 // 用户登录
 router.post("/login", async (ctx) => {
   const { username, password } = await ctx.request.body().value;
-  const user = await kv.get<User>(["users", username]);
+  const userEntry = await kv.get<User>(["users", username]);
 
-  if (!user.value || !verifyPassword(password, user.value)) {
+  // 验证用户是否存在
+  if (!userEntry.value) {
     ctx.response.status = 401;
-    ctx.response.body = { error: "认证失败" };
+    ctx.response.body = { error: "用户不存在" };
     return;
   }
 
+  // 验证密码
+  const isValid = await verifyPassword(password, userEntry.value);
+  if (!isValid) {
+    ctx.response.status = 401;
+    ctx.response.body = { error: "密码错误" };
+    return;
+  }
+
+  // 生成 Token
   const token = btoa(JSON.stringify({ 
     username,
-    exp: Date.now() + 86400_000 // 24小时过期
+    exp: Date.now() + 86400_000 // 24小时有效期
   }));
 
   ctx.response.body = { token };
 });
 
-// 消息历史
+// 获取历史消息（分页）
 router.get("/messages", async (ctx) => {
   const page = parseInt(ctx.request.url.searchParams.get("page") || "1");
   const limit = 20;
@@ -84,32 +97,45 @@ router.get("/messages", async (ctx) => {
   });
 
   const messages: Message[] = [];
-  for await (const entry of entries) messages.push(entry.value);
+  for await (const entry of entries) {
+    messages.push(entry.value);
+  }
 
   ctx.response.body = messages.slice(-limit).reverse();
 });
 
-// WebSocket实时通信
+// WebSocket 实时通信
 router.get("/ws", async (ctx) => {
   const socket = await ctx.upgrade();
   const token = ctx.request.url.searchParams.get("token");
 
   try {
+    // 解析 Token
     const { username } = JSON.parse(atob(token || ""));
-    if (!(await kv.get(["users", username])).value) throw new Error();
+    const user = await kv.get(["users", username]);
     
-    // 发送初始历史
+    // 验证用户有效性
+    if (!user.value) throw new Error("无效用户");
+
+    // 发送最近消息
     const history = await getRecentMessages();
     socket.send(JSON.stringify({ type: "history", data: history }));
 
-    // 消息处理
+    // 处理新消息
     socket.onmessage = async (event) => {
-      const message = await processMessage(event.data, username);
-      broadcastMessage(message);
+      const message: Message = {
+        encryptedText: event.data,
+        iv: toHashString(crypto.getRandomValues(new Uint8Array(12))),
+        timestamp: new Date().toISOString(),
+        user: username
+      };
+      
+      // 存储并广播消息
       await kv.set(["messages", Date.now()], message);
+      broadcastMessage(message);
     };
 
-  } catch {
+  } catch (error) {
     socket.close(1008, "认证失败");
   }
 });
@@ -122,46 +148,36 @@ app.use(async (ctx) => {
   });
 });
 
-// 启动
+// 启动服务器
 console.log("Server running on http://localhost:8000");
 await app.listen({ port: 8000 });
 
-// 工具函数
+// 密码哈希生成
 async function deriveHash(password: string, salt: Uint8Array) {
-  const key = await crypto.subtle.importKey(
-    "raw", 
-    new TextEncoder().encode(password),
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
     "PBKDF2",
     false,
     ["deriveBits"]
   );
   return crypto.subtle.deriveBits(
     { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
-    key,
+    keyMaterial,
     256
   );
 }
 
-function verifyPassword(password: string, user: User) {
-  const salt = new Uint8Array(
-    atob(user.salt).split("").map(c => c.charCodeAt(0))
-  );
-  const storedHash = new Uint8Array(
-    atob(user.passwordHash).split("").map(c => c.charCodeAt(0))
-  );
+// 密码验证
+async function verifyPassword(password: string, user: User) {
+  const salt = Uint8Array.from(atob(user.salt), c => c.charCodeAt(0)));
+  const storedHash = Uint8Array.from(atob(user.passwordHash), c => c.charCodeAt(0)));
   const newHash = await deriveHash(password, salt);
   return arraysEqual(new Uint8Array(newHash), storedHash);
 }
 
-async function processMessage(data: string, username: string): Promise<Message> {
-  return {
-    encryptedText: data,
-    iv: crypto.getRandomValues(new Uint8Array(12)).toString(),
-    timestamp: new Date().toISOString(),
-    user: username
-  };
-}
-
+// 广播消息
 function broadcastMessage(message: Message) {
   app.context.wsServer.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
@@ -170,13 +186,22 @@ function broadcastMessage(message: Message) {
   });
 }
 
+// 获取最近消息
 async function getRecentMessages(limit = 20) {
-  const entries = kv.list<Message>({ prefix: ["messages"] }, { reverse: true, limit });
+  const entries = kv.list<Message>({ prefix: ["messages"] }, { 
+    reverse: true, 
+    limit 
+  });
+  
   const messages: Message[] = [];
-  for await (const entry of entries) messages.push(entry.value);
+  for await (const entry of entries) {
+    messages.push(entry.value);
+  }
   return messages;
 }
 
+// 数组比较
 function arraysEqual(a: Uint8Array, b: Uint8Array) {
-  return a.length === b.length && a.every((val, i) => val === b[i]);
+  if (a.length !== b.length) return false;
+  return a.every((val, index) => val === b[index]);
 }
