@@ -7,15 +7,20 @@
   <style>
     :root {
       --primary: #3b82f6;
-      --background: #f8fafc;
-      --card-bg: #ffffff;
+      --bg: #f8fafc;
+      --card-bg: #fff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
     body {
-      margin: 0;
-      padding: 1rem;
       font-family: -apple-system, system-ui, sans-serif;
-      background: var(--background);
+      background: var(--bg);
+      padding: 1rem;
     }
 
     .container {
@@ -23,11 +28,11 @@
       margin: 0 auto;
     }
 
-    .auth-box {
+    .auth-card {
       background: var(--card-bg);
       padding: 2rem;
       border-radius: 1rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       margin: 2rem auto;
     }
 
@@ -35,7 +40,7 @@
       margin-bottom: 1.5rem;
     }
 
-    h2 {
+    .auth-form h2 {
       color: #1e293b;
       margin-bottom: 1rem;
     }
@@ -62,11 +67,11 @@
       opacity: 0.9;
     }
 
-    #chat {
+    #chat-ui {
       display: none;
       background: var(--card-bg);
       border-radius: 1rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       padding: 1.5rem;
     }
 
@@ -89,7 +94,7 @@
     .message-header {
       display: flex;
       align-items: center;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.25rem;
     }
 
     .username {
@@ -107,45 +112,43 @@
       color: #334155;
     }
 
-    #input-container {
+    #input-area {
       display: flex;
       gap: 0.5rem;
     }
 
-    #input {
+    #message-input {
       flex: 1;
       padding: 0.75rem;
-      border: 1px solid #e2e8f0;
-      border-radius: 0.5rem;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div id="auth">
-      <div class="auth-box">
+    <div id="auth-ui">
+      <div class="auth-card">
         <div class="auth-form">
           <h2>注册</h2>
-          <input id="regUsername" placeholder="用户名" required>
-          <input id="regPassword" type="password" placeholder="密码" required>
-          <button onclick="register()">立即注册</button>
+          <input id="reg-username" placeholder="用户名" required>
+          <input id="reg-password" type="password" placeholder="密码" required>
+          <button onclick="handleRegister()">注册</button>
         </div>
         <div class="auth-form">
           <h2>登录</h2>
-          <input id="loginUsername" placeholder="用户名" required>
-          <input id="loginPassword" type="password" placeholder="密码" required>
-          <button onclick="login()">立即登录</button>
+          <input id="login-username" placeholder="用户名" required>
+          <input id="login-password" type="password" placeholder="密码" required>
+          <button onclick="handleLogin()">登录</button>
         </div>
       </div>
     </div>
 
-    <div id="chat">
+    <div id="chat-ui">
       <div id="messages"></div>
-      <div id="input-container">
-        <input id="input" placeholder="输入消息..." />
+      <div id="input-area">
+        <input id="message-input" placeholder="输入消息..." />
         <button onclick="sendMessage()">发送</button>
       </div>
-      <button onclick="loadMore()" style="margin-top: 1rem">加载更多</button>
+      <button onclick="loadMore()" style="margin-top:1rem">加载更多</button>
     </div>
   </div>
   <script src="chat.js"></script>
