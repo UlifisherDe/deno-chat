@@ -1,216 +1,140 @@
-let currentUser = null;
-let cryptoKey = null;
-let socket = null;
-let currentPage = 1;
-
-// 注册功能
-async function register() {
-  try {
-    const username = document.getElementById('regUsername').value;
-    const password = document.getElementById('regPassword').value;
-    
-    const response = await fetch('/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-
-    const result = await response.json();
-    if (response.ok) {
-      alert('注册成功，请登录');
-      document.getElementById('regUsername').value = '';
-      document.getElementById('regPassword').value = '';
-    } else {
-      alert(result.error);
-    }
-  } catch (error) {
-    alert('网络错误，请稍后重试');
+class ChatClient {
+  constructor() {
+    this.socket = null;
+    this.currentUser = null;
+    this.cryptoKey = null;
+    this.page = 1;
   }
-}
 
-// 登录功能
-async function login() {
-  try {
-    const username = document.getElementById('loginUsername').value;
-    const password = document.getElementById('loginPassword').value;
-    
-    const response = await fetch('/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-
-    const result = await response.json();
-    if (response.ok) {
-      localStorage.setItem('token', result.token);
-      await initializeCryptoKey(username, password);
-      initializeChat();
-    } else {
-      alert(result.error);
-    }
-  } catch (error) {
-    alert('登录失败，请检查网络');
+  async init() {
+    const token = localStorage.getItem('chat-token');
+    if (token) await this.reconnect(token);
   }
-}
 
-// 初始化加密密钥
-async function initializeCryptoKey(username, password) {
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  
-  cryptoKey = await crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: encoder.encode(username),
-      iterations: 100000,
-      hash: 'SHA-256'
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-
-// 初始化聊天
-function initializeChat() {
-  document.getElementById('auth').style.display = 'none';
-  document.getElementById('chat').style.display = 'block';
-  
-  connectWebSocket();
-  loadHistory(currentPage);
-}
-
-// WebSocket连接
-function connectWebSocket() {
-  const token = localStorage.getItem('token');
-  socket = new WebSocket(`wss://${window.location.host}/ws?token=${token}`);
-
-  socket.onmessage = async (event) => {
+  async reconnect(token) {
     try {
+      const payload = JSON.parse(atob(token));
+      if (Date.now() > payload.exp) throw new Error('Token过期');
+      
+      this.currentUser = payload.username;
+      this.initCrypto(payload.username);
+      this.showChatUI();
+      this.connectWebSocket(token);
+      this.loadMessages();
+    } catch {
+      this.logout();
+    }
+  }
+
+  async handleRegister() {
+    const username = document.getElementById('reg-username').value;
+    const password = document.getElementById('reg-password').value;
+
+    try {
+      const res = await fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      
+      if (!res.ok) throw await res.json();
+      alert('注册成功，请登录');
+    } catch (error) {
+      alert(error.error || '注册失败');
+    }
+  }
+
+  async handleLogin() {
+    const username = document.getElementById('login-username').value;
+    const password = document.getElementById('login-password').value;
+
+    try {
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      
+      const { token } = await res.json();
+      localStorage.setItem('chat-token', token);
+      await this.reconnect(token);
+    } catch {
+      alert('登录失败');
+    }
+  }
+
+  connectWebSocket(token) {
+    this.socket = new WebSocket(`wss://${window.location.host}/ws?token=${token}`);
+
+    this.socket.onmessage = async (event) => {
       const { type, data } = JSON.parse(event.data);
       if (type === 'history') {
-        data.forEach(async msg => addMessage(await decryptMessage(msg)));
+        data.forEach(msg => this.displayMessage(msg));
       } else if (type === 'message') {
-        addMessage(await decryptMessage(data));
+        this.displayMessage(data);
       }
-    } catch (error) {
-      console.error('消息处理失败:', error);
-    }
-  };
-
-  socket.onclose = () => {
-    console.log('连接断开，5秒后重连...');
-    setTimeout(connectWebSocket, 5000);
-  };
-}
-
-// 加密消息
-async function encryptMessage(text) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encodedText = new TextEncoder().encode(text);
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    encodedText
-  );
-  return {
-    encryptedText: arrayBufferToBase64(encrypted),
-    iv: arrayBufferToBase64(iv)
-  };
-}
-
-// 解密消息
-async function decryptMessage(msg) {
-  try {
-    const encryptedData = base64ToArrayBuffer(msg.encryptedText);
-    const iv = base64ToArrayBuffer(msg.iv);
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      cryptoKey,
-      encryptedData
-    );
-    return {
-      ...msg,
-      text: new TextDecoder().decode(decrypted),
-      decrypted: true
     };
-  } catch (error) {
-    console.error('解密失败:', error);
-    return { ...msg, text: '无法解密的消息', decrypted: false };
-  }
-}
 
-// 添加消息到界面
-function addMessage(msg) {
-  const messagesDiv = document.getElementById('messages');
-  const messageEl = document.createElement('div');
-  messageEl.className = 'message';
-  messageEl.innerHTML = `
-    <div class="message-header">
-      <span class="username">${msg.user}</span>
-      <span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>
-    </div>
-    <div class="message-content">${msg.text}</div>
-  `;
-  
-  if (!msg.decrypted) {
-    messageEl.style.opacity = '0.6';
-    messageEl.querySelector('.message-content').style.color = '#ef4444';
+    this.socket.onclose = () => {
+      setTimeout(() => this.connectWebSocket(token), 5000);
+    };
   }
-  
-  messagesDiv.appendChild(messageEl);
-  autoScroll();
-}
 
-// 自动滚动
-function autoScroll() {
-  const messagesDiv = document.getElementById('messages');
-  const isScrolledToBottom = 
-    messagesDiv.scrollHeight - messagesDiv.clientHeight <= messagesDiv.scrollTop + 50;
-  if (isScrolledToBottom) {
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  async displayMessage(msg) {
+    const messagesDiv = document.getElementById('messages');
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message';
+    messageEl.innerHTML = `
+      <div class="message-header">
+        <span class="username">${msg.user}</span>
+        <span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>
+      </div>
+      <div class="message-content">${msg.encryptedText}</div>
+    `;
+    messagesDiv.appendChild(messageEl);
+    this.autoScroll();
   }
-}
 
-// 发送消息
-async function sendMessage() {
-  const input = document.getElementById('input');
-  if (input.value.trim()) {
+  async sendMessage() {
+    const input = document.getElementById('message-input');
+    if (!input.value.trim()) return;
+
     try {
-      const { encryptedText, iv } = await encryptMessage(input.value);
-      socket.send(JSON.stringify({ encryptedText, iv }));
+      this.socket.send(input.value);
       input.value = '';
     } catch (error) {
       alert('消息发送失败');
     }
   }
-}
 
-// 加载更多历史
-async function loadMore() {
-  currentPage++;
-  const response = await fetch(`/history?page=${currentPage}`);
-  const messages = await response.json();
-  messages.forEach(async msg => addMessage(await decryptMessage(msg)));
-}
-
-// 工具函数
-function arrayBufferToBase64(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-}
-
-function base64ToArrayBuffer(base64) {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  async loadMore() {
+    this.page++;
+    const messages = await fetch(`/messages?page=${this.page}`).then(res => res.json());
+    messages.forEach(msg => this.displayMessage(msg));
   }
-  return bytes;
+
+  autoScroll() {
+    const messagesDiv = document.getElementById('messages');
+    if (messagesDiv.scrollHeight - messagesDiv.scrollTop < 800) {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  }
+
+  showChatUI() {
+    document.getElementById('auth-ui').style.display = 'none';
+    document.getElementById('chat-ui').style.display = 'block';
+  }
+
+  logout() {
+    localStorage.removeItem('chat-token');
+    window.location.reload();
+  }
+
+  async initCrypto(username) {
+    // 加密初始化逻辑
+  }
 }
+
+// 启动应用
+const chat = new ChatClient();
+chat.init();
