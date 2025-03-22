@@ -1,160 +1,21 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secure Chat</title>
+  <title>Deno 聊天室</title>
   <style>
-    :root {
-      --primary: #3b82f6;
-      --bg: #f8fafc;
-      --card-bg: #fff;
-    }
-
-    body {
-      font-family: -apple-system, system-ui, sans-serif;
-      background: var(--bg);
-      margin: 0;
-      padding: 1rem;
-    }
-
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-
-    /* 认证界面 */
-    #auth-section {
-      background: var(--card-bg);
-      padding: 2rem;
-      border-radius: 1rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      margin-top: 4rem;
-    }
-
-    .auth-form {
-      margin-bottom: 1.5rem;
-    }
-
-    .auth-form h2 {
-      color: #1e293b;
-      margin-bottom: 1rem;
-    }
-
-    input {
-      width: 100%;
-      padding: 0.75rem;
-      border: 1px solid #e2e8f0;
-      border-radius: 0.5rem;
-      margin-bottom: 1rem;
-    }
-
-    button {
-      background: var(--primary);
-      color: white;
-      border: none;
-      padding: 0.75rem 1.5rem;
-      border-radius: 0.5rem;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-
-    button:hover {
-      opacity: 0.9;
-    }
-
-    /* 聊天界面 */
-    #chat-section.hidden {
-      display: none;
-    }
-
-    #messages-container {
-      height: 60vh;
-      overflow-y: auto;
-      padding: 1rem;
-      border: 1px solid #e2e8f0;
-      border-radius: 0.5rem;
-      margin-bottom: 1rem;
-      background: var(--card-bg);
-    }
-
-    .message {
-      background: #f1f5f9;
-      padding: 0.75rem;
-      border-radius: 0.5rem;
-      margin-bottom: 0.75rem;
-    }
-
-    .message .meta {
-      display: flex;
-      align-items: center;
-      margin-bottom: 0.25rem;
-    }
-
-    .message .user {
-      font-weight: 600;
-      color: #1e293b;
-    }
-
-    .message .time {
-      color: #64748b;
-      font-size: 0.875rem;
-      margin-left: 0.5rem;
-    }
-
-    /* 警告提示 */
-    .alert {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-size: 14px;
-      z-index: 1000;
-    }
-    .alert-success {
-      background: #d1fae5;
-      color: #065f46;
-    }
-    .alert-error {
-      background: #fee2e2;
-      color: #991b1b;
-    }
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    #messages { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; }
+    #input { width: 70%; padding: 10px; }
+    button { width: 25%; padding: 10px; background: #007bff; color: white; border: none; }
+    .message { margin: 5px 0; padding: 5px; border-bottom: 1px solid #eee; }
+    .user { font-weight: bold; color: #333; }
+    .time { color: #666; font-size: 0.8em; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- 认证界面 -->
-    <section id="auth-section">
-      <div class="auth-form">
-        <h2>注册</h2>
-        <form id="reg-form">
-          <input id="reg-username" placeholder="用户名" required>
-          <input id="reg-password" type="password" placeholder="密码" required>
-          <button type="submit">注册</button>
-        </form>
-      </div>
-      
-      <div class="auth-form">
-        <h2>登录</h2>
-        <form id="login-form">
-          <input id="login-username" placeholder="用户名" required>
-          <input id="login-password" type="password" placeholder="密码" required>
-          <button type="submit">登录</button>
-        </form>
-      </div>
-    </section>
-
-    <!-- 聊天界面 -->
-    <section id="chat-section" class="hidden">
-      <div id="messages-container"></div>
-      <form id="message-form">
-        <input id="message-input" placeholder="输入消息..." autocomplete="off">
-        <button type="submit">发送</button>
-      </form>
-    </section>
-  </div>
+  <div id="messages"></div>
+  <input id="input" placeholder="输入消息..." />
+  <button onclick="sendMessage()">发送</button>
   <script src="chat.js"></script>
 </body>
 </html>
