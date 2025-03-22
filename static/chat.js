@@ -1,72 +1,65 @@
-class ChatClient {
+class ChatApp {
   constructor() {
     this.socket = null;
     this.currentUser = null;
-    this.cryptoKey = null;
     this.page = 1;
+    this.initEventListeners();
   }
 
-  async init() {
-    const token = localStorage.getItem('chat-token');
-    if (token) await this.reconnect(token);
+  initEventListeners() {
+    document.getElementById('reg-btn').addEventListener('click', () => this.register());
+    document.getElementById('login-btn').addEventListener('click', () => this.login());
+    document.getElementById('send-btn').addEventListener('click', () => this.sendMessage());
   }
 
-  async reconnect(token) {
-    try {
-      const payload = JSON.parse(atob(token));
-      if (Date.now() > payload.exp) throw new Error('Token过期');
-      
-      this.currentUser = payload.username;
-      this.initCrypto(payload.username);
-      this.showChatUI();
-      this.connectWebSocket(token);
-      this.loadMessages();
-    } catch {
-      this.logout();
-    }
-  }
-
-  async handleRegister() {
+  async register() {
     const username = document.getElementById('reg-username').value;
     const password = document.getElementById('reg-password').value;
 
     try {
-      const res = await fetch('/register', {
+      const response = await fetch('/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      
-      if (!res.ok) throw await res.json();
+
+      if (!response.ok) throw await response.json();
       alert('注册成功，请登录');
     } catch (error) {
       alert(error.error || '注册失败');
     }
   }
 
-  async handleLogin() {
+  async login() {
     const username = document.getElementById('login-username').value;
     const password = document.getElementById('login-password').value;
 
     try {
-      const res = await fetch('/login', {
+      const response = await fetch('/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      
-      const { token } = await res.json();
+
+      const { token } = await response.json();
       localStorage.setItem('chat-token', token);
-      await this.reconnect(token);
+      this.initChat(token);
     } catch {
       alert('登录失败');
     }
   }
 
+  initChat(token) {
+    document.getElementById('auth').style.display = 'none';
+    document.getElementById('chat').style.display = 'block';
+    this.connectWebSocket(token);
+    this.loadHistory();
+  }
+
   connectWebSocket(token) {
     this.socket = new WebSocket(`wss://${window.location.host}/ws?token=${token}`);
 
-    this.socket.onmessage = async (event) => {
+    this.socket.onmessage = (event) => {
       const { type, data } = JSON.parse(event.data);
       if (type === 'history') {
         data.forEach(msg => this.displayMessage(msg));
@@ -80,16 +73,16 @@ class ChatClient {
     };
   }
 
-  async displayMessage(msg) {
+  displayMessage(msg) {
     const messagesDiv = document.getElementById('messages');
     const messageEl = document.createElement('div');
     messageEl.className = 'message';
     messageEl.innerHTML = `
       <div class="message-header">
-        <span class="username">${msg.user}</span>
+        <span class="user">${msg.user}</span>
         <span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>
       </div>
-      <div class="message-content">${msg.encryptedText}</div>
+      <div class="content">${msg.encryptedText}</div>
     `;
     messagesDiv.appendChild(messageEl);
     this.autoScroll();
@@ -107,9 +100,9 @@ class ChatClient {
     }
   }
 
-  async loadMore() {
-    this.page++;
-    const messages = await fetch(`/messages?page=${this.page}`).then(res => res.json());
+  async loadHistory() {
+    const response = await fetch(`/messages?page=${this.page}`);
+    const messages = await response.json();
     messages.forEach(msg => this.displayMessage(msg));
   }
 
@@ -119,22 +112,7 @@ class ChatClient {
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
   }
-
-  showChatUI() {
-    document.getElementById('auth-ui').style.display = 'none';
-    document.getElementById('chat-ui').style.display = 'block';
-  }
-
-  logout() {
-    localStorage.removeItem('chat-token');
-    window.location.reload();
-  }
-
-  async initCrypto(username) {
-    // 加密初始化逻辑
-  }
 }
 
 // 启动应用
-const chat = new ChatClient();
-chat.init();
+new ChatApp();
