@@ -1,36 +1,152 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>安全聊天室</title>
   <style>
-    /* 样式包含登录表单和聊天界面切换 */
-    #auth { margin: 20px auto; width: 300px; }
-    #chat { display: none; }
-    .auth-form { margin-bottom: 10px; }
-    input, button { width: 100%; padding: 8px; margin: 5px 0; }
+    :root {
+      --primary: #3b82f6;
+      --background: #f8fafc;
+      --card-bg: #ffffff;
+    }
+
+    body {
+      margin: 0;
+      padding: 1rem;
+      font-family: -apple-system, system-ui, sans-serif;
+      background: var(--background);
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .auth-box {
+      background: var(--card-bg);
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin: 2rem auto;
+    }
+
+    .auth-form {
+      margin-bottom: 1.5rem;
+    }
+
+    h2 {
+      color: #1e293b;
+      margin-bottom: 1rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    #chat {
+      display: none;
+      background: var(--card-bg);
+      border-radius: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 1.5rem;
+    }
+
+    #messages {
+      height: 60vh;
+      overflow-y: auto;
+      padding: 1rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .message {
+      background: #f1f5f9;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .message-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .username {
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .timestamp {
+      color: #64748b;
+      font-size: 0.875rem;
+      margin-left: 0.5rem;
+    }
+
+    .message-content {
+      color: #334155;
+    }
+
+    #input-container {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    #input {
+      flex: 1;
+      padding: 0.75rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+    }
   </style>
 </head>
 <body>
-  <div id="auth">
-    <div class="auth-form">
-      <h3>注册</h3>
-      <input id="regUsername" placeholder="用户名">
-      <input id="regPassword" type="password" placeholder="密码">
-      <button onclick="register()">注册</button>
+  <div class="container">
+    <div id="auth">
+      <div class="auth-box">
+        <div class="auth-form">
+          <h2>注册</h2>
+          <input id="regUsername" placeholder="用户名" required>
+          <input id="regPassword" type="password" placeholder="密码" required>
+          <button onclick="register()">立即注册</button>
+        </div>
+        <div class="auth-form">
+          <h2>登录</h2>
+          <input id="loginUsername" placeholder="用户名" required>
+          <input id="loginPassword" type="password" placeholder="密码" required>
+          <button onclick="login()">立即登录</button>
+        </div>
+      </div>
     </div>
-    <div class="auth-form">
-      <h3>登录</h3>
-      <input id="loginUsername" placeholder="用户名">
-      <input id="loginPassword" type="password" placeholder="密码">
-      <button onclick="login()">登录</button>
-    </div>
-  </div>
 
-  <div id="chat">
-    <div id="messages"></div>
-    <input id="input" placeholder="输入消息...">
-    <button onclick="sendMessage()">发送</button>
-    <button onclick="loadHistory(2)">加载更多</button>
+    <div id="chat">
+      <div id="messages"></div>
+      <div id="input-container">
+        <input id="input" placeholder="输入消息..." />
+        <button onclick="sendMessage()">发送</button>
+      </div>
+      <button onclick="loadMore()" style="margin-top: 1rem">加载更多</button>
+    </div>
   </div>
   <script src="chat.js"></script>
 </body>
